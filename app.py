@@ -1,39 +1,52 @@
 import streamlit as st
-from pdf2image import convert_from_bytes
+import fitz  # PyMuPDF
 from docx import Document
 from docx.shared import Inches
 import tempfile
 import os
 
-st.title("📄 PDF → EXACT DOCX (Pixel Perfect)")
+st.set_page_config(page_title="PDF to DOCX", layout="centered")
+
+st.title("📄 PDF → EXACT DOCX (Stable Version)")
 
 uploaded_file = st.file_uploader("Upload PDF", type=["pdf"])
 
-if uploaded_file:
-    st.info("Processing...")
+if uploaded_file is not None:
+    try:
+        st.info("Processing... ⏳")
 
-    # Convert PDF → images
-    images = convert_from_bytes(uploaded_file.read(), dpi=300)
+        # Save uploaded PDF
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            tmp.write(uploaded_file.read())
+            pdf_path = tmp.name
 
-    doc = Document()
+        # Open PDF
+        pdf = fitz.open(pdf_path)
 
-    for i, img in enumerate(images):
-        st.write(f"Processing Page {i+1}")
+        doc = Document()
 
-        # Save temp image
-        temp_img = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-        img.save(temp_img.name)
+        for i, page in enumerate(pdf):
+            st.write(f"Processing page {i+1}")
 
-        # Add image to docx
-        doc.add_picture(temp_img.name, width=Inches(6))
+            pix = page.get_pixmap(dpi=300)
 
-        # Page break
-        doc.add_page_break()
+            img_path = os.path.join(tempfile.gettempdir(), f"page_{i}.png")
+            pix.save(img_path)
 
-    # Save docx
-    output_path = os.path.join(tempfile.gettempdir(), "exact_output.docx")
-    doc.save(output_path)
+            doc.add_picture(img_path, width=Inches(6))
+            doc.add_page_break()
 
-    with open(output_path, "rb") as f:
-        st.success("Done ✅ (100% exact layout)")
-        st.download_button("Download DOCX", f, file_name="exact_output.docx")
+        output_path = os.path.join(tempfile.gettempdir(), "output.docx")
+        doc.save(output_path)
+
+        with open(output_path, "rb") as f:
+            st.success("✅ Conversion Complete")
+            st.download_button(
+                "Download DOCX",
+                f,
+                file_name="output.docx"
+            )
+
+    except Exception as e:
+        st.error("Something went wrong ❌")
+        st.code(str(e))
