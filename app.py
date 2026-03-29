@@ -35,6 +35,16 @@ if uploaded_file:
         with open(output_path, "rb") as f:
             st.download_button("Download DOCX", f, file_name="output.docx")
 
+        with open(output_path, "rb") as f:
+            file_bytes = f.read()
+
+        st.download_button(
+            label="Download DOCX",
+            data=file_bytes,
+            file_name="output.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+)
+
     except Exception as e:
         st.error("Error occurred:")
         st.code(str(e))
