@@ -1,50 +1,93 @@
 import streamlit as st
 import fitz  # PyMuPDF
 from docx import Document
-from docx.shared import Inches
 import tempfile
-import os
+import re
 
-st.title("📄 PDF → DOCX (Exact Layout)")
+st.title("📄 PDF → Structured DOCX (Tamil + English)")
 
 uploaded_file = st.file_uploader("Upload PDF", type=["pdf"])
 
+def clean_text(text):
+    return text.replace("\n", " ").strip()
+
+def split_questions(text):
+    # Split based on question numbers like "1." "2."
+    return re.split(r"\n?\d+\.", text)
+
+def extract_blocks(q):
+    # Extract Tamil + English + options
+    lines = q.split("\n")
+
+    tamil_q = []
+    eng_q = []
+    options = []
+
+    for line in lines:
+        line = line.strip()
+
+        if re.search(r"[அ-ஹ]", line):  # Tamil detection
+            tamil_q.append(line)
+        elif line.startswith(("A)", "B)", "C)", "D)")):
+            options.append(line)
+        else:
+            eng_q.append(line)
+
+    return " ".join(tamil_q), " ".join(eng_q), options
+
 if uploaded_file:
-    try:
-        st.write("Processing...")
+    st.write("Processing...")
 
-        # Save PDF
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            tmp.write(uploaded_file.read())
-            pdf_path = tmp.name
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        tmp.write(uploaded_file.read())
+        pdf_path = tmp.name
 
-        pdf = fitz.open(pdf_path)
-        doc = Document()
+    pdf = fitz.open(pdf_path)
 
-        for i, page in enumerate(pdf):
-            pix = page.get_pixmap()
+    full_text = ""
 
-            img_path = os.path.join(tempfile.gettempdir(), f"page_{i}.png")
-            pix.save(img_path)
+    for page in pdf:
+        full_text += page.get_text()
 
-            doc.add_picture(img_path, width=Inches(6))
+    questions = split_questions(full_text)
 
-        output_path = os.path.join(tempfile.gettempdir(), "output.docx")
-        doc.save(output_path)
+    doc = Document()
 
-        with open(output_path, "rb") as f:
-            st.download_button("Download DOCX", f, file_name="output.docx")
+    q_no = 1
 
-        with open(output_path, "rb") as f:
-            file_bytes = f.read()
+    for q in questions:
+        if len(q.strip()) < 10:
+            continue
 
+        tamil_q, eng_q, options = extract_blocks(q)
+
+        # Tamil Question
+        doc.add_paragraph(f"{q_no}. {tamil_q}")
+
+        # Options
+        for opt in options[:4]:
+            doc.add_paragraph(opt)
+
+        doc.add_paragraph("")  # spacing
+
+        # English Question
+        doc.add_paragraph(eng_q)
+
+        for opt in options[:4]:
+            doc.add_paragraph(opt)
+
+        doc.add_paragraph("\n")
+
+        q_no += 1
+
+    output_path = tempfile.NamedTemporaryFile(delete=False, suffix=".docx").name
+    doc.save(output_path)
+
+    with open(output_path, "rb") as f:
         st.download_button(
-            label="Download DOCX",
-            data=file_bytes,
-            file_name="output.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-)
+            "Download DOCX",
+            f.read(),
+            file_name="structured_output.docx"
+        )
 
-    except Exception as e:
-        st.error("Error occurred:")
-        st.code(str(e))
+    st.success("✅ Done")
